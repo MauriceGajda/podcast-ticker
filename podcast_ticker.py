@@ -3,12 +3,13 @@ import feedparser
 import json
 import os
 
-# KI-SETUP
+# 1. KI-SETUP
+# Holt sich den Key aus den GitHub Secrets
 api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Deine Liste
+# 2. DEINE AKTUALISIERTE PODCAST-LISTE
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -37,41 +38,52 @@ PODCAST_FEEDS = {
     "Wechselwillig": "https://wechselwillig.podigee.io/feed/mp3"
 }
 
-def get_ai_summary(podcast, title, desc):
-    # Einfacher Prompt für klare Ergebnisse
-    prompt = f"Fasse die Podcast-Folge '{title}' von '{podcast}' kurz zusammen (max. 140 Zeichen). Info: {desc}"
+def kuerze_mit_ki(name, titel, beschreibung):
+    """Nutzt Gemini KI für deutsche Zusammenfassungen mit max. 2 Sätzen"""
+    # Prompt-Anpassung gemäß Benutzervorgabe
+    prompt = (
+        f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. "
+        f"Fasse den Inhalt auf DEUTSCH in maximal 2 Sätzen zusammen. "
+        f"Antworte nur mit der Zusammenfassung, ohne Einleitung."
+    )
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
-    except:
-        return desc[:137] + "..." # Fallback falls KI versagt
+    except Exception as e:
+        print(f"KI-Fehler bei {name}: {e}")
+        return "Spannende neue Folge! Jetzt reinhören für alle Details."
 
 def main():
-    final_data = []
+    ticker_results = []
     for name, url in PODCAST_FEEDS.items():
         try:
             feed = feedparser.parse(url)
-            if not feed.entries: continue
+            if not feed.entries:
+                continue
             
             latest = feed.entries[0]
-            # Wir holen die echten Daten aus dem RSS
+            # Extraktion der Grunddaten aus dem RSS-Feed
             real_title = latest.title
             real_desc = latest.summary if 'summary' in latest else "Keine Info verfügbar."
             real_link = latest.link
             
-            # KI Zusammenfassung erstellen
-            short_info = get_ai_summary(name, real_title, real_desc)
+            # KI-Zusammenfassung generieren
+            short_info = kuerze_mit_ki(name, real_title, real_desc)
             
-            final_data.append({
-                "p": name,       # p für Podcast Name
-                "t": real_title, # t für Titel
-                "s": short_info, # s für Summary
-                "l": real_link   # l für Link
+            # Speichern mit den Kürzeln für den Web-Code
+            ticker_results.append({
+                "p": name,       # Podcast Name
+                "t": real_title, # Titel
+                "s": short_info, # Summary (max 2 Sätze, Deutsch)
+                "l": real_link   # Link
             })
-        except: continue
+        except Exception as e:
+            print(f"Fehler bei {name}: {e}")
+            continue
 
+    # Speichern der Ergebnisse als JSON
     with open("ticker_data.json", "w", encoding="utf-8") as f:
-        json.dump(final_data, f, ensure_ascii=False)
+        json.dump(ticker_results, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     main()

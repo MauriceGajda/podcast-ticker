@@ -38,12 +38,9 @@ PODCAST_FEEDS = {
 
 def generiere_beschreibung(name, titel=None, beschreibung=None):
     if titel and beschreibung and len(beschreibung) > 10:
-        # Fall 1: Zusammenfassung der aktuellen Folge
         prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt auf DEUTSCH in maximal 2 Sätzen zusammen."
     else:
-        # Fall 2: Allgemeiner Text über den Podcast (wenn Daten fehlen)
         prompt = f"Schreibe einen kurzen, spannenden Text (auf DEUTSCH, max. 2 Sätze) darüber, worum es im Podcast '{name}' allgemein geht."
-    
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
@@ -57,8 +54,21 @@ def main():
             feed = feedparser.parse(url)
             if feed.entries:
                 latest = feed.entries[0]
+                
+                # Bild-URL extrahieren (Podcast-Cover)
+                img_url = ""
+                if 'image' in feed.feed:
+                    img_url = feed.feed.image.href
+                elif 'image' in latest:
+                    img_url = latest.image.href
+                
                 summary = generiere_beschreibung(name, latest.title, latest.get('summary', ''))
-                ticker_results.append({"p": name, "t": latest.title, "s": summary})
+                ticker_results.append({
+                    "p": name, 
+                    "t": latest.title, 
+                    "s": summary,
+                    "i": img_url # 'i' für Image
+                })
         except: continue
     
     with open("ticker_data.json", "w", encoding="utf-8") as f:

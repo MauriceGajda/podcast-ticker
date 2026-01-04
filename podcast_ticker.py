@@ -8,6 +8,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+# DEINE KOMPLETTE LISTE
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -37,13 +38,12 @@ PODCAST_FEEDS = {
 }
 
 def kuerze_mit_ki(name, titel, beschreibung):
-    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Antworte nur mit dem Satz."
+    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Nur der Satz."
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
-    except Exception as e:
-        print(f"KI Fehler bei {name}: {e}")
-        return "Aktuelle News in der neuen Folge!"
+    except:
+        return "Spannende neue Folge! Jetzt reinhören für alle Details."
 
 def main():
     ticker_results = []
@@ -52,8 +52,8 @@ def main():
             feed = feedparser.parse(url)
             if feed.entries:
                 latest = feed.entries[0]
-                # Wir nennen die Felder jetzt einheitlich
                 teaser = kuerze_mit_ki(name, latest.title, latest.summary)
+                # DIESE NAMEN MÜSSEN ZUM WEB-CODE PASSEN:
                 ticker_results.append({
                     "show": name,
                     "title": latest.title,

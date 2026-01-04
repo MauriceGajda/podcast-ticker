@@ -8,7 +8,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# DEINE KOMPLETTE LISTE
+# Deine Liste
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -37,34 +37,41 @@ PODCAST_FEEDS = {
     "Wechselwillig": "https://wechselwillig.podigee.io/feed/mp3"
 }
 
-def kuerze_mit_ki(name, titel, beschreibung):
-    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Antworte nur mit dem Satz."
+def get_ai_summary(podcast, title, desc):
+    # Einfacher Prompt für klare Ergebnisse
+    prompt = f"Fasse die Podcast-Folge '{title}' von '{podcast}' kurz zusammen (max. 140 Zeichen). Info: {desc}"
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
-        return "Spannende neue Folge! Jetzt reinhören."
+        return desc[:137] + "..." # Fallback falls KI versagt
 
 def main():
-    ticker_results = []
+    final_data = []
     for name, url in PODCAST_FEEDS.items():
         try:
             feed = feedparser.parse(url)
-            if feed.entries:
-                latest = feed.entries[0]
-                teaser = kuerze_mit_ki(name, latest.title, latest.summary)
-                # WICHTIG: Diese Namen müssen 1:1 im Web-Code stehen
-                ticker_results.append({
-                    "show_name": name,
-                    "episode_title": latest.title,
-                    "ai_summary": teaser,
-                    "episode_link": latest.link
-                })
-        except:
-            continue
-    
+            if not feed.entries: continue
+            
+            latest = feed.entries[0]
+            # Wir holen die echten Daten aus dem RSS
+            real_title = latest.title
+            real_desc = latest.summary if 'summary' in latest else "Keine Info verfügbar."
+            real_link = latest.link
+            
+            # KI Zusammenfassung erstellen
+            short_info = get_ai_summary(name, real_title, real_desc)
+            
+            final_data.append({
+                "p": name,       # p für Podcast Name
+                "t": real_title, # t für Titel
+                "s": short_info, # s für Summary
+                "l": real_link   # l für Link
+            })
+        except: continue
+
     with open("ticker_data.json", "w", encoding="utf-8") as f:
-        json.dump(ticker_results, f, ensure_ascii=False, indent=2)
+        json.dump(final_data, f, ensure_ascii=False)
 
 if __name__ == "__main__":
     main()

@@ -1,22 +1,26 @@
 [
   {
-    "podcast": "Aktivkohle",
-    "teaser": "Neue Folge online!",
+    "show": "Aktivkohle",
+    "title": "SHORTIES - 002 - Aysha Joy Samuel",
+    "description": "Aktuelle News in der neuen Folge!",
     "link": "https://aktivkohle-show.podigee.io/b2-shorties-002-aysha-joy-samuel"
   },
   {
-    "podcast": "Busenfreundin",
-    "teaser": "Neue Folge online!",
+    "show": "Busenfreundin",
+    "title": "#353 ADHS I mit Wiebke Merle",
+    "description": "Aktuelle News in der neuen Folge!",
     "link": "https://podcasters.spotify.com/pod/show/ricarda-hofmann4/episodes/353-ADHS-I-mit-Wiebke-Merle-e3cl3pq"
   },
   {
-    "podcast": "Democracy Now!",
-    "teaser": "Neue Folge online!",
+    "show": "Democracy Now!",
+    "title": "Democracy Now! 2026-01-02 Friday",
+    "description": "Aktuelle News in der neuen Folge!",
     "link": "https://www.democracynow.org/shows/2026/01/02"
   },
   {
-    "podcast": "Wechselwillig",
-    "teaser": "Neue Folge online!",
+    "show": "Wechselwillig",
+    "title": "Gefeuerter Sales-Profi & Angel Investor: Felix Huschke und sein wilder Ritt durchs Startup-Game!",
+    "description": "Aktuelle News in der neuen Folge!",
     "link": "https://wechselwillig.podigee.io/70-neue-episode"
   }
 ]

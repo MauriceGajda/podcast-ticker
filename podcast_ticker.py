@@ -36,14 +36,19 @@ PODCAST_FEEDS = {
     "Wechselwillig": "https://wechselwillig.podigee.io/feed/mp3"
 }
 
-def kuerze_mit_ki(name, titel, beschreibung):
-    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt auf DEUTSCH in maximal 2 Sätzen zusammen. Nur die Zusammenfassung ausgeben."
+def generiere_beschreibung(name, titel=None, beschreibung=None):
+    if titel and beschreibung and len(beschreibung) > 10:
+        # Fall 1: Zusammenfassung der aktuellen Folge
+        prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt auf DEUTSCH in maximal 2 Sätzen zusammen."
+    else:
+        # Fall 2: Allgemeiner Text über den Podcast (wenn Daten fehlen)
+        prompt = f"Schreibe einen kurzen, spannenden Text (auf DEUTSCH, max. 2 Sätze) darüber, worum es im Podcast '{name}' allgemein geht."
+    
     try:
         response = model.generate_content(prompt)
-        text = response.text.strip()
-        return text if text else "Keine Beschreibung verfügbar."
+        return response.text.strip()
     except:
-        return "Spannende neue Folge! Jetzt reinhören für alle Details."
+        return "Ein Highlight aus unserem Netzwerk. Jetzt reinhören!"
 
 def main():
     ticker_results = []
@@ -52,14 +57,10 @@ def main():
             feed = feedparser.parse(url)
             if feed.entries:
                 latest = feed.entries[0]
-                # Wir nutzen 's' für die Zusammenfassung
-                summary = kuerze_mit_ki(name, latest.title, latest.summary)
-                ticker_results.append({
-                    "p": name,
-                    "t": latest.title,
-                    "s": summary 
-                })
+                summary = generiere_beschreibung(name, latest.title, latest.get('summary', ''))
+                ticker_results.append({"p": name, "t": latest.title, "s": summary})
         except: continue
+    
     with open("ticker_data.json", "w", encoding="utf-8") as f:
         json.dump(ticker_results, f, ensure_ascii=False, indent=2)
 

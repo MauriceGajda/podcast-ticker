@@ -38,12 +38,12 @@ PODCAST_FEEDS = {
 }
 
 def kuerze_mit_ki(name, titel, beschreibung):
-    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Nur der Satz."
+    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Antworte nur mit dem Satz."
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
-        return "Spannende neue Folge! Jetzt reinhören für alle Details."
+        return "Spannende neue Folge! Jetzt reinhören."
 
 def main():
     ticker_results = []
@@ -53,12 +53,12 @@ def main():
             if feed.entries:
                 latest = feed.entries[0]
                 teaser = kuerze_mit_ki(name, latest.title, latest.summary)
-                # DIESE NAMEN MÜSSEN ZUM WEB-CODE PASSEN:
+                # WICHTIG: Diese Namen müssen 1:1 im Web-Code stehen
                 ticker_results.append({
-                    "show": name,
-                    "title": latest.title,
-                    "description": teaser,
-                    "link": latest.link
+                    "show_name": name,
+                    "episode_title": latest.title,
+                    "ai_summary": teaser,
+                    "episode_link": latest.link
                 })
         except:
             continue

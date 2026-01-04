@@ -1,0 +1,26 @@
+name: Update Ticker
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Läuft alle 6 Stunden
+  workflow_dispatch:      # Ermöglicht manuellen Start
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - run: pip install -r requirements.txt
+      - env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python podcast_ticker.py
+      - run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add ticker_data.json
+          git commit -m "Ticker Update" || exit 0
+          git push

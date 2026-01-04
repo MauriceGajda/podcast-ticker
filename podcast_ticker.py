@@ -3,12 +3,12 @@ import feedparser
 import json
 import os
 
-# KI-Setup
+# KI-SETUP
 api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Deine Podcast-Liste
+# DEINE KOMPLETTE LISTE
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -38,12 +38,12 @@ PODCAST_FEEDS = {
 }
 
 def kuerze_mit_ki(name, titel, beschreibung):
-    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Nur der Satz."
+    prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt in EINEM spannenden Satz zusammen (max. 140 Zeichen). Nur den Satz ohne Einleitung."
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
-        return "Neue Folge online!"
+        return "Neue spannende Folge jetzt online!"
 
 def main():
     ticker_results = []
@@ -55,10 +55,13 @@ def main():
                 teaser = kuerze_mit_ki(name, latest.title, latest.summary)
                 ticker_results.append({
                     "podcast": name,
+                    "folge": latest.title,
                     "teaser": teaser,
                     "link": latest.link
                 })
-        except: continue
+        except:
+            continue
+    
     with open("ticker_data.json", "w", encoding="utf-8") as f:
         json.dump(ticker_results, f, ensure_ascii=False, indent=2)
 

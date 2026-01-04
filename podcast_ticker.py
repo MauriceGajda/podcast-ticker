@@ -36,16 +36,19 @@ PODCAST_FEEDS = {
     "Wechselwillig": "https://wechselwillig.podigee.io/feed/mp3"
 }
 
-def generiere_beschreibung(name, titel=None, beschreibung=None):
-    if titel and beschreibung and len(beschreibung) > 10:
-        prompt = f"Podcast: {name}. Folge: {titel}. Info: {beschreibung}. Fasse den Inhalt auf DEUTSCH in maximal 2 Sätzen zusammen."
+def generiere_zusammenfassung(name, titel, beschreibung):
+    # Falls keine Beschreibung da ist, erzwingen wir eine allgemeine Show-Info
+    if not beschreibung or len(beschreibung) < 15:
+        prompt = f"Erstelle eine allgemeine, spannende Zusammenfassung auf DEUTSCH (max. 2 Sätze) für den Podcast '{name}'. Erkläre kurz worum es geht."
     else:
-        prompt = f"Schreibe einen kurzen, spannenden Text (auf DEUTSCH, max. 2 Sätze) darüber, worum es im Podcast '{name}' allgemein geht."
+        prompt = f"Fasse die Podcast-Folge '{titel}' von '{name}' auf DEUTSCH zusammen. Nutze maximal 2 Sätze. Info: {beschreibung}"
+    
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
-        return "Ein Highlight aus unserem Netzwerk. Jetzt reinhören!"
+        # Letzter Fallschirm, falls KI-API komplett streikt:
+        return f"Entdecke die neueste Welt von {name}. Ein Muss für alle Fans von spannenden Gesprächen."
 
 def main():
     ticker_results = []
@@ -54,20 +57,16 @@ def main():
             feed = feedparser.parse(url)
             if feed.entries:
                 latest = feed.entries[0]
+                img_url = feed.feed.image.href if 'image' in feed.feed else ""
                 
-                # Bild-URL extrahieren (Podcast-Cover)
-                img_url = ""
-                if 'image' in feed.feed:
-                    img_url = feed.feed.image.href
-                elif 'image' in latest:
-                    img_url = latest.image.href
+                # Zwingende Zusammenfassung generieren
+                summary = generiere_zusammenfassung(name, latest.title, latest.get('summary', ''))
                 
-                summary = generiere_beschreibung(name, latest.title, latest.get('summary', ''))
                 ticker_results.append({
                     "p": name, 
                     "t": latest.title, 
                     "s": summary,
-                    "i": img_url # 'i' für Image
+                    "i": img_url
                 })
         except: continue
     

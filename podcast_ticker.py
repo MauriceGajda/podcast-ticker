@@ -39,32 +39,35 @@ PODCAST_FEEDS = {
 }
 
 def generiere_zusammenfassung(name, titel, beschreibung):
-    # Liste für Variationen, falls die API keine Antwort liefert
+    # Fallbacks für TV-Ausstrahlung (Maximal 5 Wörter)
     fallbacks = [
-        f"Tauche ein in die neueste Episode von {name}. Spannende Einblicke garantiert!",
-        f"In dieser Folge von {name} gibt es wieder jede Menge Gesprächsstoff. Hör direkt rein!",
-        f"Neue Insights und packende Themen erwarten dich bei {name}.",
-        f"Verpasse nicht, was {name} in der aktuellen Folge zu berichten hat.",
-        f"Eine frische Brise für deine Ohren: {name} ist mit einem neuen Thema zurück."
+        f"Jetzt neu im TV: {name}",
+        f"Aktuelle Highlights von {name}",
+        f"Die TV-Premiere von {name}",
+        f"{name}: Jetzt im Programm",
+        f"Sehenswertes Update von {name}"
     ]
 
-    # Bereinigung der Beschreibung
-    clean_desc = beschreibung.replace('<p>', '').replace('</p>', '').strip()
+    # Bereinigung der Beschreibung (HTML-Tags entfernen)
+    clean_desc = beschreibung.replace('<p>', '').replace('</p>', '').replace('<br>', '').strip()
     
-    # Prompt-Optimierung für mehr Abwechslung
+    # Prompt-Optimierung für TV-Kontext und hartes 5-Wort-Limit
     if not clean_desc or len(clean_desc) < 20:
-        prompt = (f"Erstelle eine kurze, mitreißende Teaser-Beschreibung für den Podcast '{name}'. "
-                  f"Sei kreativ, direkt und vermeide Standardfloskeln. "
-                  f"Maximal 2 Sätze auf DEUTSCH.")
+        prompt = (f"Schreibe einen ultrakurzen TV-Programmtext für die Sendung '{name}'. "
+                  f"Maximal 5 Wörter, Deutsch, professionell.")
     else:
-        prompt = (f"Fasse die Podcast-Folge '{titel}' von '{name}' kurz und knackig zusammen. "
-                  f"Variiere den Satzbau und beginne nicht mit 'In dieser Folge'. "
-                  f"Nutze maximal 2 Sätze auf DEUTSCH. Kontext: {clean_desc[:800]}")
+        prompt = (f"Fasse den Inhalt der TV-Folge '{titel}' von '{name}' zusammen. "
+                  f"Kontext: {clean_desc[:600]} "
+                  f"WICHTIG: Antworte mit maximal 5 Wörtern auf Deutsch. "
+                  f"Schreibe für TV-Zuschauer (z.B. 'Thema heute: ...'), nicht für Hörer.")
     
     try:
         response = model.generate_content(prompt)
         if response and response.text:
-            return response.text.strip()
+            # Bereinigung und hartes Abschneiden nach dem 5. Wort
+            text = response.text.strip().replace("\n", " ")
+            wort_liste = text.split()
+            return " ".join(wort_liste[:5])
         else:
             return random.choice(fallbacks)
     except Exception as e:
@@ -73,7 +76,7 @@ def generiere_zusammenfassung(name, titel, beschreibung):
 
 def main():
     ticker_results = []
-    print("Starte Update der Podcast-Daten...")
+    print("Starte Update der Podcast-Daten für TV-Ausstrahlung...")
     
     for name, url in PODCAST_FEEDS.items():
         try:
@@ -82,7 +85,7 @@ def main():
                 latest = feed.entries[0]
                 img_url = feed.feed.image.href if 'image' in feed.feed else ""
                 
-                # Individuelle Zusammenfassung generieren
+                # Zusammenfassung generieren (TV-fokussiert, max 5 Wörter)
                 summary = generiere_zusammenfassung(name, latest.title, latest.get('summary', ''))
                 
                 ticker_results.append({
@@ -91,15 +94,17 @@ def main():
                     "s": summary,
                     "i": img_url
                 })
-                print(f"Erfolgreich: {name}")
+                print(f"Erfolgreich verarbeitet: {name}")
         except Exception as e:
             print(f"Fehler beim Parsen von {name}: {e}")
             continue
     
-    # Speichern der Ergebnisse
+    # Speichern der Ergebnisse als JSON
     with open("ticker_data.json", "w", encoding="utf-8") as f:
         json.dump(ticker_results, f, ensure_ascii=False, indent=2)
-    print("Datei 'ticker_data.json' wurde aktualisiert.")
+    
+    print("-" * 30)
+    print("Update abgeschlossen. Datei 'ticker_data.json' ist bereit.")
 
 if __name__ == "__main__":
     main()

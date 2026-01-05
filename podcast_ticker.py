@@ -3,13 +3,15 @@ import feedparser
 import json
 import os
 import random
+import re
+from concurrent.futures import ThreadPoolExecutor
 
 # KI-Setup
-# Stellen Sie sicher, dass die Umgebungsvariable GEMINI_API_KEY gesetzt ist
 api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+# Feeds (Deine Liste bleibt gleich)
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -38,73 +40,95 @@ PODCAST_FEEDS = {
     "Wechselwillig": "https://wechselwillig.podigee.io/feed/mp3"
 }
 
-def generiere_zusammenfassung(name, titel, beschreibung):
-    # Fallbacks für TV-Ausstrahlung (Maximal 5 Wörter)
-    fallbacks = [
-        f"Jetzt neu im TV: {name}",
-        f"Aktuelle Highlights von {name}",
-        f"Die TV-Premiere von {name}",
-        f"{name}: Jetzt im Programm",
-        f"Sehenswertes Update von {name}"
-    ]
+def clean_html(text):
+    """Entfernt alle HTML-Tags zuverlässig."""
+    if not text: return ""
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', text).strip()
 
-    # Bereinigung der Beschreibung (HTML-Tags entfernen)
-    clean_desc = beschreibung.replace('<p>', '').replace('</p>', '').replace('<br>', '').strip()
+def generiere_zusammenfassung(name, titel, beschreibung):
+    fallbacks = [f"Neu bei {name}", f"Highlight: {titel[:20]}...", f"Jetzt anschauen: {name}"]
+    clean_desc = clean_html(beschreibung)
     
-    # Prompt-Optimierung für TV-Kontext und hartes 5-Wort-Limit
-    if not clean_desc or len(clean_desc) < 20:
-        prompt = (f"Schreibe einen ultrakurzen TV-Programmtext für die Sendung '{name}'. "
-                  f"Maximal 5 Wörter, Deutsch, professionell.")
-    else:
-        prompt = (f"Fasse den Inhalt der TV-Folge '{titel}' von '{name}' zusammen. "
-                  f"Kontext: {clean_desc[:600]} "
-                  f"WICHTIG: Antworte mit maximal 5 Wörtern auf Deutsch. "
-                  f"Schreibe für TV-Zuschauer (z.B. 'Thema heute: ...'), nicht für Hörer.")
+    # Fokus auf TV-Stil und Kürze
+    prompt = (
+        f"Aufgabe: Fasse die TV-Folge '{titel}' von '{name}' zusammen.\n"
+        f"Inhalt: {clean_desc[:500]}\n"
+        f"Regel: Antworte IMMER mit EXAKT 5 Wörtern auf Deutsch im Stil einer TV-Zeitschrift "
+        f"(z.B. 'Spannende Einblicke in die Modewelt'). Kein Satzzeichen am Ende."
+    )
     
     try:
         response = model.generate_content(prompt)
         if response and response.text:
-            # Bereinigung und hartes Abschneiden nach dem 5. Wort
-            text = response.text.strip().replace("\n", " ")
-            wort_liste = text.split()
-            return " ".join(wort_liste[:5])
-        else:
-            return random.choice(fallbacks)
+            words = response.text.strip().split()
+            return " ".join(words[:5])
+    except Exception:
+        pass
+    return random.choice(fallbacks)
+
+def process_podcast(name, url, old_data_dict):
+    """Verarbeitet einen einzelnen Podcast-Feed."""
+    try:
+        feed = feedparser.parse(url)
+        if not feed.entries:
+            return None
+        
+        latest = feed.entries[0]
+        titel = latest.title
+        
+        # Caching-Check: Haben wir diese Folge schon verarbeitet?
+        if name in old_data_dict and old_data_dict[name]['t'] == titel:
+            return old_data_dict[name]
+
+        # Bild-Extraktion (Podcast-Level)
+        img_url = ""
+        if 'image' in feed.feed:
+            img_url = feed.feed.image.href
+        elif 'itunes_image' in feed.feed:
+            img_url = feed.feed.itunes_image
+
+        summary = generiere_zusammenfassung(name, titel, latest.get('summary', ''))
+        
+        return {
+            "p": name, 
+            "t": titel, 
+            "s": summary,
+            "i": img_url
+        }
     except Exception as e:
-        print(f"Fehler bei Podcast {name}: {e}")
-        return random.choice(fallbacks)
+        print(f"Fehler bei {name}: {e}")
+        return None
 
 def main():
-    ticker_results = []
-    print("Starte Update der Podcast-Daten für TV-Ausstrahlung...")
-    
-    for name, url in PODCAST_FEEDS.items():
+    # 1. Alte Daten laden für Caching
+    old_data_dict = {}
+    if os.path.exists("ticker_data.json"):
         try:
-            feed = feedparser.parse(url)
-            if feed.entries:
-                latest = feed.entries[0]
-                img_url = feed.feed.image.href if 'image' in feed.feed else ""
-                
-                # Zusammenfassung generieren (TV-fokussiert, max 5 Wörter)
-                summary = generiere_zusammenfassung(name, latest.title, latest.get('summary', ''))
-                
-                ticker_results.append({
-                    "p": name, 
-                    "t": latest.title, 
-                    "s": summary,
-                    "i": img_url
-                })
-                print(f"Erfolgreich verarbeitet: {name}")
-        except Exception as e:
-            print(f"Fehler beim Parsen von {name}: {e}")
-            continue
+            with open("ticker_data.json", "r", encoding="utf-8") as f:
+                old_list = json.load(f)
+                old_data_dict = {item['p']: item for item in old_list}
+        except: pass
+
+    # 2. Parallelisierte Verarbeitung
+    print(f"Starte Update für {len(PODCAST_FEEDS)} Podcasts...")
+    results = []
     
-    # Speichern der Ergebnisse als JSON
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_podcast = {executor.submit(process_podcast, name, url, old_data_dict): name 
+                             for name, url in PODCAST_FEEDS.items()}
+        
+        for future in future_to_podcast:
+            res = future.result()
+            if res:
+                results.append(res)
+                print(f"✓ {res['p']}")
+
+    # 3. Speichern
     with open("ticker_data.json", "w", encoding="utf-8") as f:
-        json.dump(ticker_results, f, ensure_ascii=False, indent=2)
+        json.dump(results, f, ensure_ascii=False, indent=2)
     
-    print("-" * 30)
-    print("Update abgeschlossen. Datei 'ticker_data.json' ist bereit.")
+    print("\nUpdate abgeschlossen. Datei 'ticker_data.json' ist bereit.")
 
 if __name__ == "__main__":
     main()

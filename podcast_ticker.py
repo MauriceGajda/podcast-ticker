@@ -12,7 +12,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Erweiterte Feed-Liste
+# Vollständige Feed-Liste (inkl. Neuzugänge)
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -52,13 +52,11 @@ def clean_html(text):
 def generiere_zusammenfassung(name, titel, beschreibung):
     fallbacks = [f"Neu bei {name}", f"Highlight: {titel[:20]}...", f"Jetzt anhören: {name}"]
     clean_desc = clean_html(beschreibung)
-    
     prompt = (
         f"Aufgabe: Fasse die TV-Folge '{titel}' von '{name}' zusammen.\n"
         f"Inhalt: {clean_desc[:500]}\n"
         f"Regel: Antworte IMMER mit EXAKT 5 Wörtern auf Deutsch im Stil einer TV-Zeitschrift. Kein Punkt am Ende."
     )
-    
     try:
         response = model.generate_content(prompt)
         if response and response.text:
@@ -70,47 +68,50 @@ def generiere_zusammenfassung(name, titel, beschreibung):
 
 def process_podcast(name, url, old_data_dict):
     try:
-        # Cache-Busting & User-Agent
+        # Anti-Cache durch Zeitstempel & User-Agent
         bust_url = f"{url}?v={int(time.time())}" if "?" not in url else f"{url}&v={int(time.time())}"
         feed = feedparser.parse(bust_url, agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
         
         if not feed.entries:
-            print(f"⚠️  Keine Einträge gefunden für: {name}")
+            print(f"⚠️  Keine Einträge: {name}")
             return None
         
         latest = feed.entries[0]
         titel = latest.title
         
-        # Caching: Nur überspringen, wenn der Titel exakt gleich ist
-        if name in old_data_dict and old_data_dict[name]['t'] == titel:
+        # Falls die Folge schon bekannt ist, nehmen wir die alten Daten (spart KI-Kosten)
+        if old_data_dict and name in old_data_dict and old_data_dict[name]['t'] == titel:
             return old_data_dict[name]
 
-        print(f"✨ Aktualisiere: {name}...")
-        
+        # Wenn neu oder Datei gelöscht: Neu generieren
+        print(f"✨ NEU: {name} - {titel}")
         img_url = ""
         if 'image' in feed.feed: img_url = feed.feed.image.href
         elif 'itunes_image' in feed.feed: img_url = feed.feed.itunes_image
         
         summary = generiere_zusammenfassung(name, titel, latest.get('summary', ''))
-        
         return {"p": name, "t": titel, "s": summary, "i": img_url}
     except Exception as e:
         print(f"❌ Fehler bei {name}: {str(e)}")
         return None
 
 def main():
+    json_file = "ticker_data.json"
     old_data_dict = {}
-    if os.path.exists("ticker_data.json"):
+
+    # Lade alte Daten NUR, wenn du keinen Reset erzwingen willst
+    # Falls du manuell löschst, ist old_data_dict einfach leer.
+    if os.path.exists(json_file):
         try:
-            with open("ticker_data.json", "r", encoding="utf-8") as f:
+            with open(json_file, "r", encoding="utf-8") as f:
                 old_list = json.load(f)
                 old_data_dict = {item['p']: item for item in old_list}
-        except: pass
+        except:
+            print("Konnte alte JSON nicht lesen, starte bei Null.")
 
-    print(f"🔄 Starte Scan für {len(PODCAST_FEEDS)} Podcasts...")
+    print(f"🔄 Scanne {len(PODCAST_FEEDS)} Kanäle...")
     
     results = []
-    # Höhere worker_anzahl für schnellere Verarbeitung
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(process_podcast, n, u, old_data_dict): n for n, u in PODCAST_FEEDS.items()}
         for future in futures:
@@ -118,14 +119,15 @@ def main():
             if res:
                 results.append(res)
 
-    # WICHTIG: Sortiere die Liste alphabetisch nach Podcast-Name ("p")
-    # Das verhindert, dass immer nur die gleichen 3 vorne stehen
-    results.sort(key=lambda x: x['p'])
-
-    with open("ticker_data.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-    
-    print(f"\n✅ Fertig! {len(results)} von {len(PODCAST_FEEDS)} Podcasts erfolgreich geladen.")
+    # WICHTIG: Nur speichern, wenn wir auch Ergebnisse haben!
+    # Das verhindert, dass eine leere Datei die alten Daten löscht, falls das Internet weg ist.
+    if len(results) > 0:
+        results.sort(key=lambda x: x['p']) # Alphabetisch sortieren
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        print(f"\n✅ Erfolgreich! {len(results)} Podcasts in {json_file} gespeichert.")
+    else:
+        print("\n⚠️ Keine Daten empfangen. Datei wurde nicht überschrieben.")
 
 if __name__ == "__main__":
     main()

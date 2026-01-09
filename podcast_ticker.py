@@ -4,6 +4,7 @@ import json
 import os
 import random
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 # KI-Setup
@@ -11,7 +12,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Feeds (Deine Liste bleibt gleich)
+# Feeds
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -50,7 +51,6 @@ def generiere_zusammenfassung(name, titel, beschreibung):
     fallbacks = [f"Neu bei {name}", f"Highlight: {titel[:20]}...", f"Jetzt anschauen: {name}"]
     clean_desc = clean_html(beschreibung)
     
-    # Fokus auf TV-Stil und Kürze
     prompt = (
         f"Aufgabe: Fasse die TV-Folge '{titel}' von '{name}' zusammen.\n"
         f"Inhalt: {clean_desc[:500]}\n"
@@ -68,9 +68,18 @@ def generiere_zusammenfassung(name, titel, beschreibung):
     return random.choice(fallbacks)
 
 def process_podcast(name, url, old_data_dict):
-    """Verarbeitet einen einzelnen Podcast-Feed."""
+    """Verarbeitet einen einzelnen Podcast-Feed mit Anti-Caching-Maßnahmen."""
     try:
-        feed = feedparser.parse(url)
+        # Cache-Busting: Zeitstempel an URL hängen, um Server-Cache zu umgehen
+        timestamp = int(time.time())
+        separator = "&" if "?" in url else "?"
+        bust_url = f"{url}{separator}nocache={timestamp}"
+
+        # Browser-Identität vortäuschen
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        
+        feed = feedparser.parse(bust_url, agent=user_agent)
+        
         if not feed.entries:
             return None
         
@@ -81,12 +90,17 @@ def process_podcast(name, url, old_data_dict):
         if name in old_data_dict and old_data_dict[name]['t'] == titel:
             return old_data_dict[name]
 
+        # Neues Update generieren
+        print(f"✨ Neue Folge gefunden für {name}: {titel}")
+        
         # Bild-Extraktion (Podcast-Level)
         img_url = ""
         if 'image' in feed.feed:
             img_url = feed.feed.image.href
         elif 'itunes_image' in feed.feed:
             img_url = feed.feed.itunes_image
+        elif 'image' in latest: # Falls das Bild im Eintrag selbst ist
+            img_url = latest.image.href
 
         summary = generiere_zusammenfassung(name, titel, latest.get('summary', ''))
         
@@ -97,7 +111,7 @@ def process_podcast(name, url, old_data_dict):
             "i": img_url
         }
     except Exception as e:
-        print(f"Fehler bei {name}: {e}")
+        print(f"❌ Fehler bei {name}: {e}")
         return None
 
 def main():
@@ -111,7 +125,7 @@ def main():
         except: pass
 
     # 2. Parallelisierte Verarbeitung
-    print(f"Starte Update für {len(PODCAST_FEEDS)} Podcasts...")
+    print(f"🚀 Starte Update für {len(PODCAST_FEEDS)} Podcasts...")
     results = []
     
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -122,13 +136,12 @@ def main():
             res = future.result()
             if res:
                 results.append(res)
-                print(f"✓ {res['p']}")
 
     # 3. Speichern
     with open("ticker_data.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     
-    print("\nUpdate abgeschlossen. Datei 'ticker_data.json' ist bereit.")
+    print(f"\n✅ Fertig! {len(results)} Podcasts in 'ticker_data.json' gespeichert.")
 
 if __name__ == "__main__":
     main()

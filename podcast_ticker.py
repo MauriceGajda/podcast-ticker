@@ -12,7 +12,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Feeds
+# Erweiterte Feed-Liste
 PODCAST_FEEDS = {
     "Aktivkohle": "https://aktivkohle-show.podigee.io/feed/mp3",
     "Bart & Schnauze": "https://bartundschnauze.podigee.io/feed/mp3",
@@ -27,9 +27,12 @@ PODCAST_FEEDS = {
     "Das Schatten Q*abinett": "https://bkatheater.podigee.io/feed/mp3",
     "Democracy Now!": "https://www.democracynow.org/podcast.xml",
     "Gschichtn aus der Schwulenbar": "https://gschichtnausderschwulenbar.podigee.io/feed/mp3",
+    "Häppchenwiese": "https://haeppchenwiese.podigee.io/feed/mp3",
     "In kleiner Runde": "https://kleinerrunde.podigee.io/feed/mp3",
     "Interior Intim": "https://interiorintim.podigee.io/feed/mp3",
     "Jein!": "https://jein.podigee.io/feed/mp3",
+    "Leben Reicht": "https://lebenreicht.podigee.io/feed/mp3",
+    "Meryl Deep Talk": "https://meryldeeptalk.podigee.io/feed/mp3",
     "Reality TV News": "https://talknow-news.podigee.io/feed/mp3",
     "Robin Gut": "https://robingut.podigee.io/feed/mp3",
     "Stoeckel und Krawall": "https://stoeckelundkrawall.podigee.io/feed/mp3",
@@ -42,20 +45,18 @@ PODCAST_FEEDS = {
 }
 
 def clean_html(text):
-    """Entfernt alle HTML-Tags zuverlässig."""
     if not text: return ""
     clean = re.compile('<.*?>')
     return re.sub(clean, '', text).strip()
 
 def generiere_zusammenfassung(name, titel, beschreibung):
-    fallbacks = [f"Neu bei {name}", f"Highlight: {titel[:20]}...", f"Jetzt anschauen: {name}"]
+    fallbacks = [f"Neu bei {name}", f"Highlight: {titel[:20]}...", f"Jetzt anhören: {name}"]
     clean_desc = clean_html(beschreibung)
     
     prompt = (
         f"Aufgabe: Fasse die TV-Folge '{titel}' von '{name}' zusammen.\n"
         f"Inhalt: {clean_desc[:500]}\n"
-        f"Regel: Antworte IMMER mit EXAKT 5 Wörtern auf Deutsch im Stil einer TV-Zeitschrift "
-        f"(z.B. 'Spannende Einblicke in die Modewelt'). Kein Satzzeichen am Ende."
+        f"Regel: Antworte IMMER mit EXAKT 5 Wörtern auf Deutsch im Stil einer TV-Zeitschrift. Kein Punkt am Ende."
     )
     
     try:
@@ -63,59 +64,41 @@ def generiere_zusammenfassung(name, titel, beschreibung):
         if response and response.text:
             words = response.text.strip().split()
             return " ".join(words[:5])
-    except Exception:
+    except:
         pass
     return random.choice(fallbacks)
 
 def process_podcast(name, url, old_data_dict):
-    """Verarbeitet einen einzelnen Podcast-Feed mit Anti-Caching-Maßnahmen."""
     try:
-        # Cache-Busting: Zeitstempel an URL hängen, um Server-Cache zu umgehen
-        timestamp = int(time.time())
-        separator = "&" if "?" in url else "?"
-        bust_url = f"{url}{separator}nocache={timestamp}"
-
-        # Browser-Identität vortäuschen
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        
-        feed = feedparser.parse(bust_url, agent=user_agent)
+        # Cache-Busting & User-Agent
+        bust_url = f"{url}?v={int(time.time())}" if "?" not in url else f"{url}&v={int(time.time())}"
+        feed = feedparser.parse(bust_url, agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
         
         if not feed.entries:
+            print(f"⚠️  Keine Einträge gefunden für: {name}")
             return None
         
         latest = feed.entries[0]
         titel = latest.title
         
-        # Caching-Check: Haben wir diese Folge schon verarbeitet?
+        # Caching: Nur überspringen, wenn der Titel exakt gleich ist
         if name in old_data_dict and old_data_dict[name]['t'] == titel:
             return old_data_dict[name]
 
-        # Neues Update generieren
-        print(f"✨ Neue Folge gefunden für {name}: {titel}")
+        print(f"✨ Aktualisiere: {name}...")
         
-        # Bild-Extraktion (Podcast-Level)
         img_url = ""
-        if 'image' in feed.feed:
-            img_url = feed.feed.image.href
-        elif 'itunes_image' in feed.feed:
-            img_url = feed.feed.itunes_image
-        elif 'image' in latest: # Falls das Bild im Eintrag selbst ist
-            img_url = latest.image.href
-
+        if 'image' in feed.feed: img_url = feed.feed.image.href
+        elif 'itunes_image' in feed.feed: img_url = feed.feed.itunes_image
+        
         summary = generiere_zusammenfassung(name, titel, latest.get('summary', ''))
         
-        return {
-            "p": name, 
-            "t": titel, 
-            "s": summary,
-            "i": img_url
-        }
+        return {"p": name, "t": titel, "s": summary, "i": img_url}
     except Exception as e:
-        print(f"❌ Fehler bei {name}: {e}")
+        print(f"❌ Fehler bei {name}: {str(e)}")
         return None
 
 def main():
-    # 1. Alte Daten laden für Caching
     old_data_dict = {}
     if os.path.exists("ticker_data.json"):
         try:
@@ -124,24 +107,25 @@ def main():
                 old_data_dict = {item['p']: item for item in old_list}
         except: pass
 
-    # 2. Parallelisierte Verarbeitung
-    print(f"🚀 Starte Update für {len(PODCAST_FEEDS)} Podcasts...")
-    results = []
+    print(f"🔄 Starte Scan für {len(PODCAST_FEEDS)} Podcasts...")
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_podcast = {executor.submit(process_podcast, name, url, old_data_dict): name 
-                             for name, url in PODCAST_FEEDS.items()}
-        
-        for future in future_to_podcast:
+    results = []
+    # Höhere worker_anzahl für schnellere Verarbeitung
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_podcast, n, u, old_data_dict): n for n, u in PODCAST_FEEDS.items()}
+        for future in futures:
             res = future.result()
             if res:
                 results.append(res)
 
-    # 3. Speichern
+    # WICHTIG: Sortiere die Liste alphabetisch nach Podcast-Name ("p")
+    # Das verhindert, dass immer nur die gleichen 3 vorne stehen
+    results.sort(key=lambda x: x['p'])
+
     with open("ticker_data.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     
-    print(f"\n✅ Fertig! {len(results)} Podcasts in 'ticker_data.json' gespeichert.")
+    print(f"\n✅ Fertig! {len(results)} von {len(PODCAST_FEEDS)} Podcasts erfolgreich geladen.")
 
 if __name__ == "__main__":
     main()
